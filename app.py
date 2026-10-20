@@ -89,7 +89,8 @@ if uploaded_file:
                     clips = []
                     for idx, (path, dur, txt) in enumerate(st.session_state.get('assets', [])):
                         out = os.path.join(D_DIR, f"seg_{idx}.mp4")
-                        flt = f"scale=854:480,drawtext=text='{txt.replace(\"'\", '')}':fontcolor=yellow:fontsize=26:font='Arial':x=(w-text_w)/2:y=(h*0.82)-text_h:box=1:boxcolor=black@0.6:boxborderw=10"
+                        flt = f"scale=854:480,drawtext=text='{txt.replace(chr(39), chr(32))}':fontcolor=yellow:fontsize=26:font='Arial':x=(w-text_w)/2:y=(h*0.82)-text_h:box=1:boxcolor=black@0.6:boxborderw=10"
+
                         subprocess.run(f'ffmpeg -i "{path}" -vf "{flt}" -t {dur} -an -c:v libx264 -pix_fmt yuv420p "{out}" -y', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         clips.append(out)
                     
