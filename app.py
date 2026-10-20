@@ -10,9 +10,9 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 # --- INITIALIZATION & GLOBAL CONFIG ---
-st.set_page_config(page_title="AI Video Editor V3 - B-Roll Gen", layout="wide")
+st.set_page_config(page_title="AI Video Editor V4 - Pro Long B-Roll Gen", layout="wide")
 st.title("📈 Pro Share Market B-Roll Generator (Akshat Style)")
-st.caption("Advanced Real Financial Charts Full-Screen Overlay System with Audio Enhancer")
+st.caption("Advanced Long-Format Screenplay Engine with Automatic Audio Chunking")
 
 # Fetch keys safely from Streamlit Secrets Vault
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
@@ -39,11 +39,9 @@ class FullVideoScript(BaseModel):
 def download_pexels_video(keyword):
     if not PEXELS_API_KEY:
         return None
-    
     search_query = keyword.replace(" ", "%20")
     url = f"https://pexels.com{search_query}&per_page=1&orientation=landscape"
     headers = {"Authorization": PEXELS_API_KEY}
-    
     try:
         res = requests.get(url, headers=headers, timeout=15)
         if res.status_code == 200:
@@ -53,10 +51,8 @@ def download_pexels_video(keyword):
                 suitable_files = [v for v in video_files if v.get('width', 0) <= 1920]
                 best_file = suitable_files if suitable_files else video_files
                 video_url = best_file['link']
-                
                 safe_kw = re.sub(r'[^a-zA-Z0-9]', '_', keyword)
                 file_path = os.path.join(DOWNLOAD_DIR, f"video_{safe_kw}.mp4")
-                
                 with open(file_path, 'wb') as f:
                     f.write(requests.get(video_url, timeout=30).content)
                 return file_path
@@ -66,14 +62,12 @@ def download_pexels_video(keyword):
 
 # --- STREAMLIT UI ---
 st.sidebar.header("🎬 Pro Layer Assets")
-st.sidebar.success("Alice Dynamic Speech Routing Active")
-st.sidebar.info("Voice Enhancer Module Linked")
+st.sidebar.success("Advanced Audio Chunking Engine Active")
 
 uploaded_file = st.file_uploader("Upload Your Talking Head Analysis Video (MP4)", type=["mp4"])
 
 if uploaded_file is not None:
     st.video(uploaded_file)
-    
     original_video_path = os.path.join(DOWNLOAD_DIR, "uploaded_source.mp4")
     with open(original_video_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
@@ -82,28 +76,37 @@ if uploaded_file is not None:
     enhanced_audio_path = os.path.join(DOWNLOAD_DIR, "enhanced_speech.aac")
 
     if st.button("🚀 Step 1 & 2: Listen Voice & Match Real Visual Charts"):
-        with st.spinner("Processing speech audio locally and matching stock market charts..."):
+        with st.spinner("Processing speech using Chunking Engine to read full length video..."):
             try:
                 if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
                 
-                # Filter out background noise hums using highpass and lowpass filters
+                # Clean background noise hums using highpass/lowpass filters
                 cmd_aud = f'ffmpeg -i "{original_video_path}" -vn -af "highpass=f=200,lowpass=f=3000,dynaudnorm" -ac 1 -ar 16000 "{temp_wav_path}" -y'
                 subprocess.run(cmd_aud, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
                 recognizer = sr.Recognizer()
-                with sr.AudioFile(temp_wav_path) as source:
-                    audio_data = recognizer.record(source)
+                detected_text = ""
                 
-                try:
-                    detected_text = recognizer.recognize_google(audio_data, language="hi-IN")
-                except Exception:
-                    detected_text = "share market analysis trading stock profit compounding returns investment money"
+                # --- CHUNKING SYSTEM FOR LONG AUDIO ---
+                with sr.AudioFile(temp_wav_path) as source:
+                    audio_duration = int(source.DURATION)
+                    # Process in 30-second intervals to bypass Google API 1-minute restriction
+                    for offset in range(0, audio_duration, 30):
+                        try:
+                            audio_chunk = recognizer.record(source, duration=30)
+                            chunk_text = recognizer.recognize_google(audio_chunk, language="hi-IN")
+                            detected_text += " " + chunk_text
+                        except Exception:
+                            continue
+
+                if not detected_text.strip():
+                    detected_text = "share market analysis trading stock profit compounding returns investment money market correction crash options trading"
 
                 prompt = (
-                    f"Analyze this raw script transcript context: '{detected_text}'. "
-                    "Break the structure down into short consecutive timeline blocks (5-15 seconds each). For each block provide: "
+                    f"Analyze this full script transcript context: '{detected_text}'. "
+                    "Break the structure down into short consecutive timeline blocks (5-15 seconds each) covering the full duration. For each block provide: "
                     "1. text_overlay: Punchy short financial words in uppercase. "
-                    "2. search_keywords: One single accurate financial word to look up stock videos (e.g., 'candlestick chart', 'bitcoin', 'money rain', 'trading floor')."
+                    "2. search_keywords: One single accurate financial word to look up stock videos (e.g., 'candlestick chart', 'bitcoin', 'money rain')."
                 )
                 
                 response = client.models.generate_content(
@@ -116,7 +119,7 @@ if uploaded_file is not None:
                 )
                 
                 blueprint = json.loads(response.text)
-                st.success("🎯 AI successfully mapped real charts to your spoken voice!")
+                st.success("🎯 AI successfully mapped real charts across your entire video length!")
                 
                 st.subheader("📦 Real-time Audio-to-Visual Asset Allocation")
                 table_data = "| Time Frame | Text Overlay | AI Asset Keyword | Status |\n|---|---|---|---|\n"
@@ -157,12 +160,11 @@ if uploaded_file is not None:
                 try:
                     assets = st.session_state.get('downloaded_assets', [])
                     processed_clips = []
-                    
                     res_w, res_h = 854, 480
+                    
                     for idx, (file_path, duration, text_text) in enumerate(assets):
                         segment_output = os.path.join(DOWNLOAD_DIR, f"processed_segment_{idx}.mp4")
                         clean_text = text_text.replace("'", "").replace("!", "")
-                        
                         filter_complex = f"scale={res_w}:{res_h},drawtext=text='{clean_text}':fontcolor=yellow:fontsize=26:font='Arial':x=(w-text_w)/2:y=(h*0.82)-text_h:box=1:boxcolor=black@0.6:boxborderw=10"
                         cmd_text = f'ffmpeg -i "{file_path}" -vf "{filter_complex}" -t {duration} -an -c:v libx264 -pix_fmt yuv420p "{segment_output}" -y'
                         subprocess.run(cmd_text, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -177,10 +179,5 @@ if uploaded_file is not None:
                     stitch_cmd = f'ffmpeg -f concat -safe 0 -i "{concat_list_path}" -c:v libx264 -pix_fmt yuv420p "{stitched_output}" -y'
                     subprocess.run(stitch_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-                    # Extract & Enhance audio separately for crystal clear podcast voice
                     if os.path.exists(enhanced_audio_path): os.remove(enhanced_audio_path)
                     cmd_enhance_audio = f'ffmpeg -i "{original_video_path}" -vn -af "afftdn,highpass=f=120,lowpass=f=3500,volume=1.8" -c:a aac "{enhanced_audio_path}" -y'
-                    subprocess.run(cmd_enhance_audio, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-                    final_render_path = os.path.join(OUTPUT_DIR, "final_akshat_style_output.mp4")
-                    merge_audio_cmd = f'ffmpeg -i "{stitched_output}" -i "{enhanced_audio_path}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -shortest "{final_render_path}" -y'
