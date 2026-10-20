@@ -10,14 +10,14 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 # --- INITIALIZATION & GLOBAL CONFIG ---
-st.set_page_config(page_title="AI Video Editor V2 - B-Roll Gen", layout="wide")
+st.set_page_config(page_title="AI Video Editor V3 - B-Roll Gen", layout="wide")
 st.title("📈 Pro Share Market B-Roll Generator (Akshat Style)")
-st.caption("Advanced Real Financial Charts Full-Screen Overlay System")
+st.caption("Advanced Real Financial Charts Full-Screen Overlay System with Audio Enhancer")
 
-# Safe Core Config
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+# Fetch keys safely from Streamlit Secrets Vault
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+PEXELS_API_KEY = st.secrets.get("PEXELS_API_KEY", "")
 
-PEXELS_API_KEY = "9w14RB7kgN4EZhlxuGBv0Dvk2bjSg"
 DOWNLOAD_DIR = os.path.abspath("downloaded_assets")
 OUTPUT_DIR = os.path.abspath("output_videos")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -37,29 +37,39 @@ class FullVideoScript(BaseModel):
     cues: list[TimestampedCue]
 
 def download_pexels_video(keyword):
-    if not PEXELS_API_KEY or PEXELS_API_KEY == "YOUR_PEXELS_API_KEY_HERE":
+    if not PEXELS_API_KEY:
         return None
+    
+    # Clean keyword to make a tight search query
+    search_query = keyword.replace(" ", "%20")
+    url = f"https://pexels.com{search_query}&per_page=1&orientation=landscape"
     headers = {"Authorization": PEXELS_API_KEY}
-    url = f"https://pexels.com{keyword}&per_page=1&orientation=landscape"
+    
     try:
-        res = requests.get(url, headers=headers, timeout=15).json()
-        if res.get('videos') and len(res['videos']) > 0:
-            video_files = res['videos']['video_files']
-            best_file = sorted(video_files, key=lambda x: x.get('width', 0))
-            video_url = best_file[0]['link']
-            
-            safe_kw = re.sub(r'[^a-zA-Z0-9]', '_', keyword)
-            file_path = os.path.join(DOWNLOAD_DIR, f"video_{safe_kw}.mp4")
-            with open(file_path, 'wb') as f:
-                f.write(requests.get(video_url, timeout=30).content)
-            return file_path
-    except Exception as e:
+        res = requests.get(url, headers=headers, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get('videos') and len(data['videos']) > 0:
+                video_files = data['videos'][0]['video_files']
+                # Pick standard HD quality suitable for cloud processing limits
+                suitable_files = [v for v in video_files if v.get('width', 0) <= 1920]
+                best_file = suitable_files[0] if suitable_files else video_files[0]
+                video_url = best_file['link']
+                
+                safe_kw = re.sub(r'[^a-zA-Z0-9]', '_', keyword)
+                file_path = os.path.join(DOWNLOAD_DIR, f"video_{safe_kw}.mp4")
+                
+                with open(file_path, 'wb') as f:
+                    f.write(requests.get(video_url, timeout=30).content)
+                return file_path
+    except Exception:
         pass
     return None
 
 # --- STREAMLIT UI ---
 st.sidebar.header("🎬 Pro Layer Assets")
 st.sidebar.success("Alice Dynamic Speech Routing Active")
+st.sidebar.info("Voice Enhancer Module Linked")
 
 uploaded_file = st.file_uploader("Upload Your Talking Head Analysis Video (MP4)", type=["mp4"])
 
@@ -71,12 +81,15 @@ if uploaded_file is not None:
         f.write(uploaded_file.getbuffer())
 
     temp_wav_path = os.path.join(DOWNLOAD_DIR, "extracted_speech.wav")
+    enhanced_audio_path = os.path.join(DOWNLOAD_DIR, "enhanced_speech.aac")
 
     if st.button("🚀 Step 1 & 2: Listen Voice & Match Real Visual Charts"):
         with st.spinner("Processing speech audio locally and matching stock market charts..."):
             try:
                 if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
-                cmd_aud = f'ffmpeg -i "{original_video_path}" -vn -ac 1 -ar 16000 "{temp_wav_path}" -y'
+                
+                # Extract clean audio path with highpass and lowpass voice filtering to kill background hums
+                cmd_aud = f'ffmpeg -i "{original_video_path}" -vn -af "highpass=f=200,lowpass=f=3000,dynaudnorm" -ac 1 -ar 16000 "{temp_wav_path}" -y'
                 subprocess.run(cmd_aud, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
                 recognizer = sr.Recognizer()
@@ -85,7 +98,7 @@ if uploaded_file is not None:
                 
                 try:
                     detected_text = recognizer.recognize_google(audio_data, language="hi-IN")
-                except Exception as speech_err:
+                except Exception:
                     detected_text = "share market analysis trading stock profit compounding returns investment money"
 
                 prompt = (
@@ -116,13 +129,13 @@ if uploaded_file is not None:
                     downloaded_file = download_pexels_video(kw)
                     
                     if downloaded_file and os.path.exists(downloaded_file):
-                        status_msg = "✅ Real Stock Video Downloaded Successfully"
+                        status_msg = "✅ Real Stock Chart Video Downloaded"
                         downloaded_assets.append((downloaded_file, cue["duration"], cue["text_overlay"]))
                     else:
                         fallback_path = os.path.join(DOWNLOAD_DIR, f"video_{kw.replace(' ', '_')}.mp4")
                         cmd_copy = f'ffmpeg -i "{original_video_path}" -ss 00:00:00 -t {cue["duration"]} -an -vf scale=854:480 -c:v libx264 "{fallback_path}" -y'
                         subprocess.run(cmd_copy, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = "⚠️ Local Render Active"
+                        status_msg = "⚠️ Pexels Key Missing - Using Local Render"
                         downloaded_assets.append((fallback_path, cue["duration"], cue["text_overlay"]))
                     
                     table_data += f"| {cue['start_time']} - {cue['end_time']} | **{cue['text_overlay']}** | {kw} | {status_msg} |\n"
@@ -142,7 +155,7 @@ if uploaded_file is not None:
         st.subheader("🎬 Phase 3 & 4: Final Processing & Render Engine")
         
         if st.button("🎥 Render Final Akshat Shrivastava Style Video"):
-            with st.spinner("FFmpeg is baking texts on real charts and matching your voice..."):
+            with st.spinner("FFmpeg is baking texts on real charts and stabilizing your voice..."):
                 try:
                     assets = st.session_state.get('downloaded_assets', [])
                     processed_clips = []
@@ -152,7 +165,7 @@ if uploaded_file is not None:
                         segment_output = os.path.join(DOWNLOAD_DIR, f"processed_segment_{idx}.mp4")
                         clean_text = text_text.replace("'", "").replace("!", "")
                         
-                        filter_complex = f"scale={res_w}:{res_h},drawtext=text='{clean_text}':fontcolor=yellow:fontsize=24:font='Arial':x=(w-text_w)/2:y=(h*0.82)-text_h:box=1:boxcolor=black@0.6:boxborderw=10"
+                        filter_complex = f"scale={res_w}:{res_h},drawtext=text='{clean_text}':fontcolor=yellow:fontsize=26:font='Arial':x=(w-text_w)/2:y=(h*0.82)-text_h:box=1:boxcolor=black@0.6:boxborderw=10"
                         cmd_text = f'ffmpeg -i "{file_path}" -vf "{filter_complex}" -t {duration} -an -c:v libx264 -pix_fmt yuv420p "{segment_output}" -y'
                         subprocess.run(cmd_text, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         processed_clips.append(segment_output)
@@ -166,21 +179,10 @@ if uploaded_file is not None:
                     stitch_cmd = f'ffmpeg -f concat -safe 0 -i "{concat_list_path}" -c:v libx264 -pix_fmt yuv420p "{stitched_output}" -y'
                     subprocess.run(stitch_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+                    # Extract & Enhance audio separately for studio clarity
+                    if os.path.exists(enhanced_audio_path): os.remove(enhanced_audio_path)
+                    cmd_enhance_audio = f'ffmpeg -i "{original_video_path}" -vn -af "afftdn,highpass=f=120,lowpass=f=3500,volume=1.8" -c:a aac "{enhanced_audio_path}" -y'
+                    subprocess.run(cmd_enhance_audio, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
                     final_render_path = os.path.join(OUTPUT_DIR, "final_akshat_style_output.mp4")
-                    merge_audio_cmd = f'ffmpeg -i "{stitched_output}" -i "{original_video_path}" -map 0:v:0 -map 1:a:0? -c:v copy -c:a aac -shortest "{final_render_path}" -y'
-                    subprocess.run(merge_audio_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-                    if os.path.exists(concat_list_path): os.remove(concat_list_path)
-
-                    st.success("🏁 Pro-Level Video Edited and Rendered Successfully with Real Audio Matching!")
-                    st.video(final_render_path)
-                    
-                    with open(final_render_path, "rb") as video_file:
-                        st.download_button(
-                            label="📥 Download Your Pro Edited Video File",
-                            data=video_file.read(),
-                            file_name="pro_share_market_output.mp4",
-                            mime="video/mp4"
-                        )
-                except Exception as render_err:
-                    st.error(f"Render Error: {str(render_err)}")
