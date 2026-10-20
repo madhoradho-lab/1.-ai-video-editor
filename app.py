@@ -1,183 +1,111 @@
 import streamlit as st
-import os
-import json
-import requests
-import re
-import subprocess
+import os, json, requests, re, subprocess
 import speech_recognition as sr
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
-# --- INITIALIZATION & GLOBAL CONFIG ---
-st.set_page_config(page_title="AI Video Editor V4 - Pro Long B-Roll Gen", layout="wide")
+st.set_page_config(page_title="AI Video Editor V4", layout="wide")
 st.title("📈 Pro Share Market B-Roll Generator (Akshat Style)")
-st.caption("Advanced Long-Format Screenplay Engine with Automatic Audio Chunking")
+st.caption("Optimized Code Engine with Automatic Audio Chunking")
 
-# Fetch keys safely from Streamlit Secrets Vault
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 PEXELS_API_KEY = st.secrets.get("PEXELS_API_KEY", "")
-
-DOWNLOAD_DIR = os.path.abspath("downloaded_assets")
-OUTPUT_DIR = os.path.abspath("output_videos")
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
+D_DIR, O_DIR = os.path.abspath("downloaded_assets"), os.path.abspath("output_videos")
+os.makedirs(D_DIR, exist_ok=True); os.makedirs(O_DIR, exist_ok=True)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# --- PYDANTIC SCHEMAS FOR VOICEOVER COGNITION ---
 class TimestampedCue(BaseModel):
-    start_time: str = Field(description="Segment start timestamp (MM:SS)")
-    end_time: str = Field(description="Segment end timestamp (MM:SS)")
+    start_time: str = Field(description="Start timestamp (MM:SS)")
+    end_time: str = Field(description="End timestamp (MM:SS)")
     duration: int = Field(description="Duration in seconds")
-    text_overlay: str = Field(description="PUNCHY UPPERCASE KINETIC HOOKS for overlays")
-    search_keywords: str = Field(description="Single best financial keyword for Pexels chart video")
+    text_overlay: str = Field(description="UPPERCASE KINETIC HOOK")
+    search_keywords: str = Field(description="Single financial word for stock video")
 
 class FullVideoScript(BaseModel):
     cues: list[TimestampedCue]
 
-def download_pexels_video(keyword):
-    if not PEXELS_API_KEY:
-        return None
-    search_query = keyword.replace(" ", "%20")
-    url = f"https://pexels.com{search_query}&per_page=1&orientation=landscape"
-    headers = {"Authorization": PEXELS_API_KEY}
+def download_pexels(keyword):
+    if not PEXELS_API_KEY: return None
+    url = f"https://pexels.com{keyword.replace(' ', '%20')}&per_page=1&orientation=landscape"
     try:
-        res = requests.get(url, headers=headers, timeout=15)
+        res = requests.get(url, headers={"Authorization": PEXELS_API_KEY}, timeout=15)
         if res.status_code == 200:
-            data = res.json()
-            if data.get('videos') and len(data['videos']) > 0:
-                video_files = data['videos']['video_files']
-                suitable_files = [v for v in video_files if v.get('width', 0) <= 1920]
-                best_file = suitable_files if suitable_files else video_files
-                video_url = best_file['link']
-                safe_kw = re.sub(r'[^a-zA-Z0-9]', '_', keyword)
-                file_path = os.path.join(DOWNLOAD_DIR, f"video_{safe_kw}.mp4")
-                with open(file_path, 'wb') as f:
-                    f.write(requests.get(video_url, timeout=30).content)
-                return file_path
-    except Exception:
-        pass
+            v_files = res.json().get('videos', [{}])[0].get('video_files', [])
+            v_url = [v for v in v_files if v.get('width', 0) <= 1920][0]['link']
+            f_path = os.path.join(D_DIR, f"v_{re.sub(r'[^a-zA-Z0-9]', '_', keyword)}.mp4")
+            with open(f_path, 'wb') as f: f.write(requests.get(v_url, timeout=30).content)
+            return f_path
+    except: pass
     return None
 
-# --- STREAMLIT UI ---
-st.sidebar.header("🎬 Pro Layer Assets")
-st.sidebar.success("Advanced Audio Chunking Engine Active")
-
 uploaded_file = st.file_uploader("Upload Your Talking Head Analysis Video (MP4)", type=["mp4"])
-
-if uploaded_file is not None:
-    st.video(uploaded_file)
-    original_video_path = os.path.join(DOWNLOAD_DIR, "uploaded_source.mp4")
-    with open(original_video_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    temp_wav_path = os.path.join(DOWNLOAD_DIR, "extracted_speech.wav")
-    enhanced_audio_path = os.path.join(DOWNLOAD_DIR, "enhanced_speech.aac")
+if uploaded_file:
+    orig_path = os.path.join(D_DIR, "src.mp4")
+    with open(orig_path, "wb") as f: f.write(uploaded_file.getbuffer())
+    t_wav, enh_aud = os.path.join(D_DIR, "aud.wav"), os.path.join(D_DIR, "enh.aac")
 
     if st.button("🚀 Step 1 & 2: Listen Voice & Match Real Visual Charts"):
-        with st.spinner("Processing speech using Chunking Engine to read full length video..."):
+        with st.spinner("Processing speech using Chunking Engine..."):
             try:
-                if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
-                
-                # Clean background noise hums using highpass/lowpass filters
-                cmd_aud = f'ffmpeg -i "{original_video_path}" -vn -af "highpass=f=200,lowpass=f=3000,dynaudnorm" -ac 1 -ar 16000 "{temp_wav_path}" -y'
-                subprocess.run(cmd_aud, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-                recognizer = sr.Recognizer()
-                detected_text = ""
-                
-                # --- CHUNKING SYSTEM FOR LONG AUDIO ---
-                with sr.AudioFile(temp_wav_path) as source:
-                    audio_duration = int(source.DURATION)
-                    # Process in 30-second intervals to bypass Google API 1-minute restriction
-                    for offset in range(0, audio_duration, 30):
+                subprocess.run(f'ffmpeg -i "{orig_path}" -vn -af "highpass=f=200,lowpass=f=3000,dynaudnorm" -ac 1 -ar 16000 "{t_wav}" -y', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                rec, det_text = sr.Recognizer(), ""
+                with sr.AudioFile(t_wav) as src:
+                    for offset in range(0, int(src.DURATION), 30):
                         try:
-                            audio_chunk = recognizer.record(source, duration=30)
-                            chunk_text = recognizer.recognize_google(audio_chunk, language="hi-IN")
-                            detected_text += " " + chunk_text
-                        except Exception:
-                            continue
-
-                if not detected_text.strip():
-                    detected_text = "share market analysis trading stock profit compounding returns investment money market correction crash options trading"
-
-                prompt = (
-                    f"Analyze this full script transcript context: '{detected_text}'. "
-                    "Break the structure down into short consecutive timeline blocks (5-15 seconds each) covering the full duration. For each block provide: "
-                    "1. text_overlay: Punchy short financial words in uppercase. "
-                    "2. search_keywords: One single accurate financial word to look up stock videos (e.g., 'candlestick chart', 'bitcoin', 'money rain')."
+                            det_text += " " + rec.recognize_google(rec.record(src, duration=30), language="hi-IN")
+                        except: continue
+                if not det_text.strip(): det_text = "share market analysis stock profit returns money"
+                
+                resp = client.models.generate_content(
+                    model='gemini-3.8-flash', contents=f"Analyze script: '{det_text}'. Break into 5-15s blocks with uppercase text_overlay and single search_keywords financial word.",
+                    config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=FullVideoScript),
                 )
+                blueprint = json.loads(resp.text)
+                st.success("🎯 AI successfully mapped charts across your full video length!")
                 
-                response = client.models.generate_content(
-                    model='gemini-3.8-flash',
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=FullVideoScript
-                    ),
-                )
-                
-                blueprint = json.loads(response.text)
-                st.success("🎯 AI successfully mapped real charts across your entire video length!")
-                
-                st.subheader("📦 Real-time Audio-to-Visual Asset Allocation")
-                table_data = "| Time Frame | Text Overlay | AI Asset Keyword | Status |\n|---|---|---|---|\n"
-                
-                downloaded_assets = []
+                assets, table = [], "| Time Frame | Text Overlay | AI Keyword | Status |\n|---|---|---|---|\n"
                 for cue in blueprint.get("cues", []):
                     kw = cue["search_keywords"]
-                    downloaded_file = download_pexels_video(kw)
-                    
-                    if downloaded_file and os.path.exists(downloaded_file):
-                        status_msg = "✅ Real Stock Chart Video Downloaded"
-                        downloaded_assets.append((downloaded_file, cue["duration"], cue["text_overlay"]))
+                    f_dl = download_pexels(kw)
+                    if f_dl and os.path.exists(f_dl):
+                        assets.append((f_dl, cue["duration"], cue["text_overlay"]))
+                        table += f"| {cue['start_time']} - {cue['end_time']} | **{cue['text_overlay']}** | {kw} | ✅ Downloaded |\n"
                     else:
-                        fallback_path = os.path.join(DOWNLOAD_DIR, f"video_{kw.replace(' ', '_')}.mp4")
-                        cmd_copy = f'ffmpeg -i "{original_video_path}" -ss 00:00:00 -t {cue["duration"]} -an -vf scale=854:480 -c:v libx264 "{fallback_path}" -y'
-                        subprocess.run(cmd_copy, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = "⚠️ Pexels Key Missing - Using Local Render"
-                        downloaded_assets.append((fallback_path, cue["duration"], cue["text_overlay"]))
-                    
-                    table_data += f"| {cue['start_time']} - {cue['end_time']} | **{cue['text_overlay']}** | {kw} | {status_msg} |\n"
-
-                st.markdown(table_data)
-                st.session_state['downloaded_assets'] = downloaded_assets
-                st.session_state['blueprint_ready'] = True
-
-            except Exception as main_err:
-                st.error(f"AI Matrix Error: {str(main_err)}")
+                        f_fb = os.path.join(D_DIR, f"f_{kw.replace(' ', '_')}.mp4")
+                        subprocess.run(f'ffmpeg -i "{orig_path}" -ss 00:00:00 -t {cue["duration"]} -an -vf scale=854:480 -c:v libx264 "{f_fb}" -y', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        assets.append((f_fb, cue["duration"], cue["text_overlay"]))
+                        table += f"| {cue['start_time']} - {cue['end_time']} | **{cue['text_overlay']}** | {kw} | ⚠️ Local Render |\n"
+                st.markdown(table)
+                st.session_state['assets'], st.session_state['ready'] = assets, True
+            except Exception as e: st.error(f"Error: {e}")
             finally:
-                if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
+                if os.path.exists(t_wav): os.remove(t_wav)
 
-    # --- PHASE 3: FINAL COMPILER ---
-    if st.session_state.get('blueprint_ready'):
-        st.write("---")
-        st.subheader("🎬 Phase 3 & 4: Final Processing & Render Engine")
-        
+    if st.session_state.get('ready'):
         if st.button("🎥 Render Final Akshat Shrivastava Style Video"):
-            with st.spinner("FFmpeg is baking texts on real charts and stabilizing your voice..."):
+            with st.spinner("FFmpeg is baking text and stabilizing voice..."):
                 try:
-                    assets = st.session_state.get('downloaded_assets', [])
-                    processed_clips = []
-                    res_w, res_h = 854, 480
+                    clips = []
+                    for idx, (path, dur, txt) in enumerate(st.session_state.get('assets', [])):
+                        out = os.path.join(D_DIR, f"seg_{idx}.mp4")
+                        flt = f"scale=854:480,drawtext=text='{txt.replace(\"'\", '')}':fontcolor=yellow:fontsize=26:font='Arial':x=(w-text_w)/2:y=(h*0.82)-text_h:box=1:boxcolor=black@0.6:boxborderw=10"
+                        subprocess.run(f'ffmpeg -i "{path}" -vf "{flt}" -t {dur} -an -c:v libx264 -pix_fmt yuv420p "{out}" -y', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        clips.append(out)
                     
-                    for idx, (file_path, duration, text_text) in enumerate(assets):
-                        segment_output = os.path.join(DOWNLOAD_DIR, f"processed_segment_{idx}.mp4")
-                        clean_text = text_text.replace("'", "").replace("!", "")
-                        filter_complex = f"scale={res_w}:{res_h},drawtext=text='{clean_text}':fontcolor=yellow:fontsize=26:font='Arial':x=(w-text_w)/2:y=(h*0.82)-text_h:box=1:boxcolor=black@0.6:boxborderw=10"
-                        cmd_text = f'ffmpeg -i "{file_path}" -vf "{filter_complex}" -t {duration} -an -c:v libx264 -pix_fmt yuv420p "{segment_output}" -y'
-                        subprocess.run(cmd_text, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        processed_clips.append(segment_output)
-
-                    concat_list_path = os.path.join(DOWNLOAD_DIR, "concat_list.txt")
-                    with open(concat_list_path, "w") as f:
-                        for clip in processed_clips:
-                            f.write(f"file '{clip.replace('\\', '/')}'\n")
-
-                    stitched_output = os.path.join(OUTPUT_DIR, "stitched_broll.mp4")
-                    stitch_cmd = f'ffmpeg -f concat -safe 0 -i "{concat_list_path}" -c:v libx264 -pix_fmt yuv420p "{stitched_output}" -y'
-                    subprocess.run(stitch_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-                    if os.path.exists(enhanced_audio_path): os.remove(enhanced_audio_path)
-                    cmd_enhance_audio = f'ffmpeg -i "{original_video_path}" -vn -af "afftdn,highpass=f=120,lowpass=f=3500,volume=1.8" -c:a aac "{enhanced_audio_path}" -y'
+                    c_txt = os.path.join(D_DIR, "list.txt")
+                    with open(c_txt, "w") as f:
+                        for c in clips: f.write(f"file '{c.replace('\\', '/')}'\n")
+                    
+                    st_out = os.path.join(O_DIR, "stitched.mp4")
+                    subprocess.run(f'ffmpeg -f concat -safe 0 -i "{c_txt}" -c:v libx264 -pix_fmt yuv420p "{st_out}" -y', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(f'ffmpeg -i "{orig_path}" -vn -af "afftdn,highpass=f=120,lowpass=f=3500,volume=1.8" -c:a aac "{enh_aud}" -y', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    f_render = os.path.join(O_DIR, "final_output.mp4")
+                    subprocess.run(f'ffmpeg -i "{st_out}" -i "{enh_aud}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -shortest "{f_render}" -y', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    st.success("🏁 Video Rendered Successfully with Enhanced Audio!")
+                    st.video(f_render)
+                    with open(f_render, "rb") as vf:
+                        st.download_button("📥 Download Pro Video", data=vf.read(), file_name="pro_output.mp4", mime="video/mp4")
+                except Exception as re_e: st.error(f"Render Error: {re_e}")
