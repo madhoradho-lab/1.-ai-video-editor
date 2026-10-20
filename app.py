@@ -40,7 +40,6 @@ def download_pexels_video(keyword):
     if not PEXELS_API_KEY:
         return None
     
-    # Clean keyword to make a tight search query
     search_query = keyword.replace(" ", "%20")
     url = f"https://pexels.com{search_query}&per_page=1&orientation=landscape"
     headers = {"Authorization": PEXELS_API_KEY}
@@ -50,11 +49,10 @@ def download_pexels_video(keyword):
         if res.status_code == 200:
             data = res.json()
             if data.get('videos') and len(data['videos']) > 0:
-                video_files = data['videos'][0]['video_files']
-                # Pick standard HD quality suitable for cloud processing limits
+                video_files = data['videos']['video_files']
                 suitable_files = [v for v in video_files if v.get('width', 0) <= 1920]
-                best_file = suitable_files[0] if suitable_files else video_files[0]
-                video_url = best_file['link']
+                best_file = suitable_files if suitable_files else video_files
+                video_url = best_file[0]['link']
                 
                 safe_kw = re.sub(r'[^a-zA-Z0-9]', '_', keyword)
                 file_path = os.path.join(DOWNLOAD_DIR, f"video_{safe_kw}.mp4")
@@ -88,7 +86,7 @@ if uploaded_file is not None:
             try:
                 if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
                 
-                # Extract clean audio path with highpass and lowpass voice filtering to kill background hums
+                # Filter out background noise hums using highpass and lowpass filters
                 cmd_aud = f'ffmpeg -i "{original_video_path}" -vn -af "highpass=f=200,lowpass=f=3000,dynaudnorm" -ac 1 -ar 16000 "{temp_wav_path}" -y'
                 subprocess.run(cmd_aud, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -179,10 +177,10 @@ if uploaded_file is not None:
                     stitch_cmd = f'ffmpeg -f concat -safe 0 -i "{concat_list_path}" -c:v libx264 -pix_fmt yuv420p "{stitched_output}" -y'
                     subprocess.run(stitch_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-                    # Extract & Enhance audio separately for studio clarity
+                    # Extract & Enhance audio separately for crystal clear podcast voice
                     if os.path.exists(enhanced_audio_path): os.remove(enhanced_audio_path)
                     cmd_enhance_audio = f'ffmpeg -i "{original_video_path}" -vn -af "afftdn,highpass=f=120,lowpass=f=3500,volume=1.8" -c:a aac "{enhanced_audio_path}" -y'
                     subprocess.run(cmd_enhance_audio, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
                     final_render_path = os.path.join(OUTPUT_DIR, "final_akshat_style_output.mp4")
-
+                    merge_audio_cmd = f'ffmpeg -i "{stitched_output}" -i "{enhanced_audio_path}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -shortest "{final_render_path}" -y'
