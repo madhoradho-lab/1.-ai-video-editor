@@ -15,7 +15,8 @@ st.title("📈 Pro Share Market B-Roll Generator (Akshat Style)")
 st.caption("Advanced Real Financial Charts Full-Screen Overlay System")
 
 # Safe Core Config
-GEMINI_API_KEY = AQ.Ab8RN6I7J2vXcgVLLtfFDghBoWi2rAAt6e7o_IG3sIKjUfJGhA
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+
 PEXELS_API_KEY = "9w14RB7kgN4EZhlxuGBv0Dvk2bjSg"
 DOWNLOAD_DIR = os.path.abspath("downloaded_assets")
 OUTPUT_DIR = os.path.abspath("output_videos")
